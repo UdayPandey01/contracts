@@ -2,30 +2,41 @@
 
 pragma solidity ^0.8.0;
 
-import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-
+import "./PriceConvertor.sol";
 
 contract FundMe {
+    using PriceConvertor for uint256;
+
     uint256 public minimumUsd = 50 * 1e18;
+
+    address[] public funders;
+    mapping(address => uint256) public addressToAmountFunded;
+
+    address public owner;
+    
+    constructor(){
+        owner = msg.sender;
+    }
+
     function fund() public payable {
-        require(getConversionRate(msg.value) >= minimumUsd, "Didn't have enough funds");
+        require(msg.value.getConversionRate() >= minimumUsd, "Didn't have enough funds");
+        funders.push(msg.sender);
+        addressToAmountFunded[msg.sender] = msg.value;
     }
-    // function withdraw() public {}
+    function withdraw() public onlyOwner {
+        for(uint256 funderIndex = 0; funderIndex < funders.length; funderIndex++){
+            address funder = funders[funderIndex];
+            addressToAmountFunded[funder] = 0;
+        }
 
-    function getPrice() public view returns(uint256) {
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
-        (,int256 price,,,) = priceFeed.latestRoundData();
-        return uint256(price * 1e10) ;
+        funders = new address[](0);
+        (bool callSuccess, ) = payable(msg.sender).call{value : address(this).balance}("");
+        require(callSuccess, "Call Failed");
     }
 
-    function getVersion() public view returns(uint256){
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
-        return priceFeed.version();
+    modifier onlyOwner{
+        require(msg.sender == owner, "Sender is not owner");
+        _;
     }
 
-    function getConversionRate(uint256 ethAmount) public view returns(uint256){
-        uint256 ethPrice = getPrice();
-        uint256 ethAmountInUsd = (ethPrice * ethAmount) / 1e18;
-        return ethAmountInUsd;
-    }
 }
